@@ -2,8 +2,76 @@
 
 
 addressBook::addressBook() {
-	this->addressArray = NULL;
-	this->size = 0;
+
+	// 初始化不能再简单的初始化，而要包含文件了：从三个方面
+	ifstream ifs;
+	ifs.open(FILENAME, ios::in);  // 以读的方式来打开文件
+
+	// 1、文件不存在
+	if (!ifs.is_open()) {  // 用is_open()函数来判断是否能够打开成功
+		cout << "文件不存在！" << endl;
+		this->addressArray = NULL;
+		this->size = 0;
+		this->isFileEmpty = true; // 文件内容为空
+		ifs.close();
+		return;
+	}	
+
+	// 2、 文件存在但是数据被用户清空
+	char ch;
+	ifs >> ch; // 读取一个字符来判断文件是否有内容
+	if (ifs.eof()) { // 如果成立，即读取到最后一个字符说明它没有字符
+		cout << "文件为空！" << endl;
+		this->addressArray = NULL;
+		this->size = 0;
+		this->isFileEmpty = true; // 文件内容为空
+		ifs.close();
+		return;
+	}
+
+	// 3、文件存在且其中保存数据：需要将当中的数据拿回到程序中
+	/*char chch;
+	ifs >> chch;
+	if (ifs.is_open() && !ifs.eof()) {*/
+
+		//cout << "文件中人数：" << this->addressFileNum() << endl;
+		this->size = this->addressFileNum(); // 初始化文件中的人数
+		
+
+		// 先开辟堆区空间: 刚开始的时候忘记了这个重要事项，下次应该注意注意！！！！！！！！！！！！！！！！！！！1
+		this->addressArray = new People[this->size];
+
+		string aname, acompany, afixTel, amobTel, asort, aemail, aqq;
+		// 从文件中读取每行人数，将它们保存到联系人类所在的数组中
+		for (int i = 0; i < this->size; ++i) {
+			ifs >> aname && ifs >> acompany && ifs >> afixTel && ifs >> amobTel && ifs >> asort && ifs >> aemail && ifs >> aqq;
+			this->addressArray[i].name = aname;
+			this->addressArray[i].company = acompany;
+			this->addressArray[i].fixTel = afixTel;
+			this->addressArray[i].mobTel = amobTel;
+			this->addressArray[i].sort = asort;
+			this->addressArray[i].email = aemail;
+			this->addressArray[i].qq = aqq;
+		}
+
+		ifs.close();
+	
+}
+
+// 文件中的数据有几行，即有几个联系人
+int addressBook::addressFileNum() {
+	ifstream ifs;
+	ifs.open(FILENAME, ios::in);
+
+	string aname, acompany, afixTel, amobTel, asort, aemail, aqq;
+	int num = 0;
+
+	while (ifs >> aname && ifs >> acompany && ifs >> afixTel && ifs >> amobTel && ifs >> asort && ifs >> aemail && ifs >> aqq) {
+		num++;
+	}
+
+	ifs.close();
+	return num;
 }
 
 void addressBook::showMenu() {
@@ -104,11 +172,20 @@ void addressBook::addPerson(addressBook *pmab) { // 可以一次完成若干条信息的输入
 		}
 		// 更新通讯录人数
 		this->size = newSize;
-		cout << "成功添加" << addCnt << "名联系人！" << endl;
+
+		this->isFileEmpty = false;
+
+		cout << "成功添加" << addCnt << "名联系人！" << endl;		
 
 		// 释放原空间
 		delete[] this->addressArray;
 		this->addressArray = newSpace;
+
+
+		// 发现问题： 该函数的调用必须在释放原空间以后才能正常执行
+		// 明白了： 上方两行代码不只有释放原空间，还有将类中保存堆区存数据的指针指向到每次更新以后的正确位置才可以！加油！
+		// 在这里调用 savePerson保存联系人的 函数
+		this->savePerson();
 	}
 	else {
 		cout << "输入有误！" << endl;
@@ -191,6 +268,8 @@ void addressBook::deletePersonByName(addressBook* pmab) {  // 删除某联系人
 		}
 
 		cout << "已删除！" << endl;
+
+		this->savePerson();
 	}
 	else {
 		cout << "查无此人！无法删除" << endl;
@@ -275,6 +354,8 @@ void addressBook::modifyPersonByName(addressBook* pmab) {
 
 				cout << "修改成功！" << endl;
 				flag = true;
+
+				this->savePerson();
 			}
 		}
 	}	
@@ -286,7 +367,7 @@ void addressBook::modifyPersonByName(addressBook* pmab) {
 }
 
 
-// 删除所有联系人
+// 清空联系人
 void addressBook::deleteAllPerson(addressBook* pmab) {
 
 	char sel;
@@ -295,7 +376,11 @@ void addressBook::deleteAllPerson(addressBook* pmab) {
 	if (sel == 'Y' || sel == 'y') {
 		// 逻辑上删除
 		//pmab->addressArray == nullptr;
+		ofstream ofs(FILENAME, ios::trunc); // 如果文件存在，就删除文件重新创建
+		ofs.close();
+
 		pmab->size = 0;
+		pmab->isFileEmpty = true;
 
 		cout << "删除成功！" << endl;
 	}
@@ -307,7 +392,28 @@ void addressBook::deleteAllPerson(addressBook* pmab) {
 	system("cls");	
 }
 
-void addressBook::savePerson() {  // 文件保存
+// 文件保存
+// 同样也要加作用域addressBook::，因为都一样是成员函数
+void addressBook::savePerson() {  
+	// 先创建一个文件流的对象
+	ofstream ofs;
+
+	// 以写的形式去打开文件
+	ofs.open(FILENAME, ios::out);
+
+	// 然后将保存到堆区的数据都写入文件
+	for (int i = 0; i < this->size; ++i) {
+		ofs << this->addressArray[i].name << " "
+			<< this->addressArray[i].company << " "
+			<< this->addressArray[i].fixTel << " "
+			<< this->addressArray[i].mobTel << " "
+			<< this->addressArray[i].sort << " "
+			<< this->addressArray[i].email << " "
+			<< this->addressArray[i].qq << endl;
+	}
+
+	// 最后要记得关闭文件
+	ofs.close();
 
 }
 
@@ -320,5 +426,8 @@ void addressBook::exitPerson() {
 
 addressBook::~addressBook()
 {
-
+	if (this->addressArray != NULL) {
+		delete [] this->addressArray;
+		this->addressArray = NULL;
+	}
 }
